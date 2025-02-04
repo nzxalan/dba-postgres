@@ -1,13 +1,21 @@
 #!/bin/bash
 
+# Author: Alan
+# Created: 2025-02-04
+# Description: pg_base backup, pg_dump backup,DB maintenance, Housekeeping 
+#              default setup all functions enabled 
+# Version: 1.0
+
+##########################################################
 # variable setup
 ##########################################################
+
 PGDATA="/var/data/pgdata15"
 ARCHIVEDIR="/var/backups/archivedir"
 
 BACKUP_DIR="/var/backups"
-LOGICAL_BACKUP_DIR="$BACKUP_DIR/logical_backup"
 BASE_BACKUP_DIR="$BACKUP_DIR/base_backup"
+LOGICAL_BACKUP_DIR="$BACKUP_DIR/logical_backup"
 
 DATE=$(date +%Y_%m_%d_%H%M%S)
 LOG_FILE="/var/backups/logs/backup_$DATE.log"
@@ -20,12 +28,13 @@ WAL_RETENTION_DAYS=7
 BACKUP_RETENTION_DAYS=1
 LOG_RETENTION_DAYS=7
 
-# feature flags
-BASE_BACKUP_ENABLED=false
-LOGICAL_BACKUP_ENABLED=false
+# feature flags (true/false)
+BASE_BACKUP_ENABLED=true
+LOGICAL_BACKUP_ENABLED=true
 DB_MAINTENANCE_ENABLED=true
-HOUSEKEEPING_ENABLED=false
+HOUSEKEEPING_ENABLED=true
 ##########################################################
+
 
 # check postgreSQL service running before backup
 if pg_isready -q; then
@@ -33,36 +42,40 @@ if pg_isready -q; then
 
 
     # create backup directory
-
     mkdir -p $BASE_BACKUP_DIR/$DATE
     mkdir -p $LOGICAL_BACKUP_DIR/$DATE
 
 
-    # base backup
+    #####################################
+    # base  backup the whole db cluster #
+    #####################################
+    
     if [ "$BASE_BACKUP_ENABLED" = true ]; then
         echo "==========================================" | tee -a $LOG_FILE
         echo "Starting base backup..." | tee -a $LOG_FILE
         echo "==========================================" | tee -a $LOG_FILE       
-        ###############################
-        # backup the whole db cluster #
-        ###############################
-        pg_basebackup -D $BASE_BACKUP_DIR/$DATE -Ft -Xs -z -P -v
+        
+ 	pg_basebackup -D $BASE_BACKUP_DIR/$DATE -Ft -Xs -z -P -v
 
         if [ $? -eq 0 ]; then
             echo "Cluster backup completed successfully at $(date +%Y-%m-%d_%H:%M:%S)" | tee -a $LOG_FILE
         else
             echo "Cluster backup failed at $(date +%Y-%m-%d_%H:%M:%S)" | tee -a $LOG_FILE
-            # echo "Cluster backup failed at $(date +%Y-%m-%d_%H:%M:%S)" | mail -s "PostgreSQL Backup Failed" $EMAIL
+          # echo "Cluster backup failed at $(date +%Y-%m-%d_%H:%M:%S)" | mail -s "PostgreSQL Backup Failed" $EMAIL
         fi
     fi
 
 
 
-    # logical backup
+    ##############################################
+    # logical backup each db except template db  #
+    ##############################################
+
     if [ "$LOGICAL_BACKUP_ENABLED" = true ]; then
         echo "==========================================" | tee -a $LOG_FILE
         echo "Starting logical backup..." | tee -a $LOG_FILE
         echo "==========================================" | tee -a $LOG_FILE
+    
         # pg_dump backup each database
         for db in $(psql -At -c "SELECT datname FROM pg_database WHERE datistemplate = false;"); do
             pg_dump $db | gzip > $LOGICAL_BACKUP_DIR/$DATE/$db.sql.gz
@@ -75,18 +88,19 @@ if pg_isready -q; then
     fi
 
 
-    # database maintenance tasks
+    ###############################
+    # database maintenance tasks  #
+    ###############################
+
     if [ "$DB_MAINTENANCE_ENABLED" = true ]; then
         echo "==========================================" | tee -a $LOG_FILE
         echo "Starting database maintenance tasks..." | tee -a $LOG_FILE
         echo "==========================================" | tee -a $LOG_FILE
-        ###############################
-        # database maintenance tasks
-        ###############################
 
         # reindex database
 #        echo "Reindexing databases..." | tee -a $LOG_FILE
 #        psql -c "REINDEX DATABASE postgres;" 2>&1 | tee -a $LOG_FILE
+
 
         # vacuum analyze
         echo "Vacuuming and analyzing databases..." | tee -a $LOG_FILE
@@ -99,14 +113,16 @@ if pg_isready -q; then
     fi
 
 
-    # housekeeping tasks
+
+
+    #######################
+    # housekeeping tasks  #
+    #######################
+
     if [ "$HOUSEKEEPING_ENABLED" = true ]; then
         echo "==========================================" | tee -a $LOG_FILE
         echo "Starting housekeeping tasks..." | tee -a $LOG_FILE
         echo "==========================================" | tee -a $LOG_FILE
-        ###############################
-        # housekeeping tasks
-        ###############################
 
         # delete old WAL files
         find $ARCHIVEDIR -type f -mtime +$WAL_RETENTION_DAYS -delete
