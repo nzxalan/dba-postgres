@@ -1,0 +1,74 @@
+==================
+export SQL format
+==================
+# SQL include "create database"
+pg_dump -h akp-postgres1.nzx.com -d dairy_tools_production -U dba --create --verbose > dairy_tools_production.pgsql
+
+# 直接导入 in new server
+psql -f  dairy_tools_production.pgsql
+psql -U dba -d postgres  -f  dairy_tools_production.pgsql
+
+# 直接导入前要新建数据库如果没有"--create" export时
+CREATE DATABASE dairy_tools_production WITH ENCODING = 'UTF8' LC_COLLATE = 'en_NZ.UTF-8' LC_CTYPE = 'en_NZ.UTF-8';
+ALTER DATABASE dairy_tools_production OWNER TO dairy_tools_role;
+
+psql dairy_tools_production < dairy_tools_production.pgsql
+
+
+
+=========================
+export custom SQL format
+=========================
+虽然 pg_dump -Fc 不包含 CREATE DATABASE，你可以在恢复时使用 pg_restore -C 来让它尝试创建数据库（前提是你连接到一个已存在的数据库，如 postgres）
+
+pg_dump -Fc dairy_tools_production -f dairy_tools_production.dump
+
+pg_restore -U dba -d postgres -C -v dairy_tools_production.dump
+
+--no-tablespaces : 参数忽略表空间信息,将所有对象恢复到默认表空间（通常是 pg_default）
+
+
+
+=========================
+export table to CSV file
+import CSV to table
+=========================
+
+-- 1. backup the whole "log" table 
+psql> copy log to '/backups/log_bkp.csv' WITH CSV HEADER;
+
+
+-- 2. backup "log" older than 2024-06-01 records
+psql>
+COPY (
+    SELECT * FROM log
+    where date_time <'2024-06-01'
+) TO '/backups/log_20240601.csv' WITH CSV HEADER;
+
+
+-- 3. load "log_bkp.csv" to "log" table
+psql>   COPY log FROM '/backups/log_bkp.csv' WITH CSV HEADER ;
+
+
+-- psql command
+#> psql -U dba -d map_db -c "\COPY (SELECT * FROM log WHERE date_time <'2024-06-01) TO 'log_bkp.csv' WITH CSV HEADER"
+
+
+
+=================================================
+pg_dumpall
+export(整个PostgreSQL实例-所有数据库和全局对象)
+- 所有数据库的数据和结构
+- 所有角色（用户）
+- 所有 tablespace 和数据库级别设置
+=================================================
+
+# export roles,tablespaces
+pg_dumpall --globals-only > global.psql	
+pg_dumpall --globals-only -f global.psql
+
+
+
+
+
+
